@@ -1,7 +1,7 @@
 Name:           lrn-webmin-bundle
 Version:        %{_version}
 Release:        %{_release}%{?dist}
-Summary:        Air-gapped Webmin/Virtualmin bundle for Rocky Linux hypervisors
+Summary:        Air-gapped Webmin/Virtualmin bundle for Rocky Linux 9 hypervisors
 License:        GPLv3
 URL:            https://github.com/mike0615/lrn-webmin-bundle
 Source0:        %{name}-%{version}.tar.gz
@@ -13,7 +13,7 @@ Requires:       firewalld
 
 %description
 Self-contained air-gapped installation bundle for Webmin and Virtualmin on
-Rocky Linux 10.x hypervisors. Includes a bundled local DNF repository of all
+Rocky Linux 9.x hypervisors. Includes a bundled local DNF repository of all
 required packages and the LRN Service Panels custom Webmin module for managing
 FreeIPA, Ansible, XMPP, and other services via integrated iframe panels.
 
@@ -71,4 +71,4 @@ fi
 
 %changelog
 * Thu Apr 17 2026 LRN-MAN <lrn-man@planet-maytag.local> - 1.0-1
-- Initial release: air-gapped Webmin/Virtualmin bundle with LRN Service Panels
+- Initial release: air-gapped Webmin/Virtualmin bundle for EL9 with LRN Service Panels

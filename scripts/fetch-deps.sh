@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)/SOURCES/repo"
-EL_VER="${EL_VER:-10}"
+EL_VER="${EL_VER:-9}"
 ARCH="${ARCH:-x86_64}"
 
 # Webmin / Virtualmin repo URLs
