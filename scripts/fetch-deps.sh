@@ -8,10 +8,9 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)/SOURCES/repo"
 EL_VER="${EL_VER:-9}"
 ARCH="${ARCH:-x86_64}"
 
-# Webmin / Virtualmin repo URLs
-WEBMIN_REPO="https://download.webmin.com/download/newkey/yum/noarch"
-VMIN_REPO="https://software.virtualmin.com/vm/7/rpm/el${EL_VER}/${ARCH}"
-VMIN_NOARCH="https://software.virtualmin.com/vm/7/rpm/el${EL_VER}/noarch"
+# Virtualmin GPL repo base URLs (confirmed working)
+VMIN_GPL_NOARCH="https://software.virtualmin.com/vm/7/gpl/rpm/noarch"
+VMIN_X86_64="https://software.virtualmin.com/vm/7/rpm/x86_64"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[+]${NC} $*"; }
@@ -52,46 +51,35 @@ dnf_download() {
         || warn "dnf download failed for: $pkg"
 }
 
-# ── Webmin ─────────────────────────────────────────────────────────────────────
-log "=== Webmin ==="
-WEBMIN_RPM_URL="https://www.webmin.com/download/rpm/webmin-current.rpm"
-download_rpm "$WEBMIN_RPM_URL"
+# ── Webmin + Virtualmin GPL (direct URL downloads — no repo needed) ───────────
+log "=== Webmin + Virtualmin GPL ==="
 
-# ── Virtualmin GPL packages ────────────────────────────────────────────────────
-log "=== Virtualmin GPL ==="
-VMIN_PKGS=(
-    "wbm-virtual-server"
-    "wbm-virtualmin-htpasswd"
-    "wbm-virtualmin-awstats"
-    "wbm-virtualmin-dav"
-    "wbm-virtualmin-spamassassin"
-    "virtualmin-config"
-    "virtualmin-lamp-stack"
-    "wbm-jailkit"
-    "wbm-phpini"
+# Latest versions as of April 2026 — bump these when upstream releases updates
+VMIN_GPL_DIRECT=(
+    "${VMIN_GPL_NOARCH}/webmin-2.630-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/usermin-2.530-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtual-server-8.1.0.gpl-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbt-virtual-server-theme-9.4-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/virtualmin-config-7.0.24-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-htpasswd-3.7-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-awstats-7.0.0-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-dav-3.13-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-git-1.15-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-nginx-2.40-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-nginx-ssl-1.31-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-jailkit-1.1-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-init-2.10-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-svn-5.1-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-vsftpd-1.11-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-ruby-gems-1.9-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/wbm-virtualmin-sqlite-1.8-1.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/perl-Authen-OATH-2.0.1-16.el8.vm.noarch.rpm"
+    "${VMIN_GPL_NOARCH}/perl-Term-Spinner-Color-0.05-1.noarch.rpm"
 )
 
-# Add Virtualmin repo temporarily
-VMIN_REPO_FILE="/etc/yum.repos.d/virtualmin-fetch-tmp.repo"
-cat > "$VMIN_REPO_FILE" <<EOF
-[virtualmin-fetch]
-name=Virtualmin EL${EL_VER}
-baseurl=${VMIN_REPO}
-enabled=1
-gpgcheck=0
-
-[virtualmin-fetch-noarch]
-name=Virtualmin EL${EL_VER} noarch
-baseurl=${VMIN_NOARCH}
-enabled=1
-gpgcheck=0
-EOF
-
-for pkg in "${VMIN_PKGS[@]}"; do
-    dnf_download "$pkg"
+for url in "${VMIN_GPL_DIRECT[@]}"; do
+    download_rpm "$url"
 done
-
-rm -f "$VMIN_REPO_FILE"
 
 # ── System packages (from Rocky Linux repos) ──────────────────────────────────
 log "=== System Packages ==="
@@ -99,13 +87,13 @@ SYS_PKGS=(
     bind
     bind-utils
     dhcp-server
-    mysql-server
+    mariadb-server
     postgresql-server
     libvirt
     libvirt-daemon-kvm
     qemu-kvm
     virt-install
-    perl-LWP-UserAgent
+    perl-libwww-perl
     perl-LWP-Protocol-https
     perl-JSON
     perl-URI

@@ -105,13 +105,13 @@ SUPPORT_PKGS=(
     bind
     bind-utils
     dhcp-server
-    mysql-server
+    mariadb-server
     postgresql-server
     libvirt
     qemu-kvm
     virt-install
     virt-viewer
-    perl-LWP-UserAgent
+    perl-libwww-perl
     perl-LWP-Protocol-https
     perl-JSON
     perl-URI

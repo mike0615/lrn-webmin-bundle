@@ -1,3 +1,5 @@
+%global debug_package %{nil}
+
 Name:           lrn-webmin-bundle
 Version:        %{_version}
 Release:        %{_release}%{?dist}
@@ -42,14 +44,16 @@ if [ -d %{_sourcedir}/repo ] && [ "$(ls -A %{_sourcedir}/repo)" ]; then
     cp -r %{_sourcedir}/repo/* %{buildroot}/opt/%{name}/repo/
 fi
 
-%files
+# Generate file list dynamically to cover all bundled RPMs and repodata
+find %{buildroot}/opt/%{name} -not -type d \
+    | sed "s|^%{buildroot}||" \
+    > %{_builddir}/%{name}-%{version}/filelist
+find %{buildroot}/opt/%{name} -mindepth 1 -type d \
+    | sed "s|^%{buildroot}|%%dir |" \
+    >> %{_builddir}/%{name}-%{version}/filelist
+
+%files -f filelist
 %defattr(-,root,root,-)
-%dir /opt/%{name}
-%dir /opt/%{name}/scripts
-%dir /opt/%{name}/modules
-%dir /opt/%{name}/repo
-/opt/%{name}/scripts/*
-/opt/%{name}/modules/*
 
 %post
 echo ""
@@ -70,5 +74,5 @@ if systemctl is-active --quiet webmin 2>/dev/null; then
 fi
 
 %changelog
-* Thu Apr 17 2026 LRN-MAN <lrn-man@planet-maytag.local> - 1.0-1
+* Fri Apr 17 2026 LRN-MAN <lrn-man@planet-maytag.local> - 1.0-1
 - Initial release: air-gapped Webmin/Virtualmin bundle for EL9 with LRN Service Panels
