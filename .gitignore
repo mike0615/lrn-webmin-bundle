@@ -2,7 +2,7 @@ BUILD/
 RPMS/
 SRPMS/
 SOURCES/*.tar.gz
-SOURCES/repo/
+SOURCES/repo*/
 *.rpm
 *.log
 *.tmp

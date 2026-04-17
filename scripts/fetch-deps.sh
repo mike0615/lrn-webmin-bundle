@@ -1,31 +1,68 @@
 #!/usr/bin/env bash
 # fetch-deps.sh — Download all RPMs needed for the air-gapped bundle.
 # Run this on an internet-connected machine BEFORE running `make rpm`.
-# Output: SOURCES/repo/ populated with all required RPMs.
+# Output: SOURCES/repo-el<EL_VER>/ populated with all required RPMs.
+#
+# Usage:
+#   ./scripts/fetch-deps.sh              # EL9 (default)
+#   EL_VER=10 ./scripts/fetch-deps.sh   # EL10
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)/SOURCES/repo"
 EL_VER="${EL_VER:-9}"
 ARCH="${ARCH:-x86_64}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Allow REPO_DIR override from environment (used when running inside a container)
+REPO_DIR="${REPO_DIR:-${ROOT}/SOURCES/repo-el${EL_VER}}"
 
-# Virtualmin GPL repo base URLs (confirmed working)
+# Virtualmin GPL repo (noarch — same packages for all EL versions)
 VMIN_GPL_NOARCH="https://software.virtualmin.com/vm/7/gpl/rpm/noarch"
-VMIN_X86_64="https://software.virtualmin.com/vm/7/rpm/x86_64"
+
+# Rocky Linux mirror base
+ROCKY_MIRROR="https://dl.rockylinux.org/pub/rocky/${EL_VER}"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 die()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-command -v curl     &>/dev/null || die "curl is required"
-command -v dnf      &>/dev/null || die "dnf is required"
-command -v createrepo_c &>/dev/null || { warn "createrepo_c not found — install it: dnf install -y createrepo_c"; }
+command -v curl &>/dev/null || die "curl is required"
+
+# ── Cross-version: run inside a Rocky Linux container if EL_VER != host ───────
+HOST_EL_VER="$(rpm -E '%{rhel}' 2>/dev/null || echo '9')"
+
+if [[ "$EL_VER" != "$HOST_EL_VER" ]]; then
+    if command -v podman &>/dev/null || command -v docker &>/dev/null; then
+        RUNTIME=$(command -v podman || command -v docker)
+        log "Cross-version build: re-running inside Rocky Linux ${EL_VER} container via $(basename "$RUNTIME")"
+        mkdir -p "$REPO_DIR"
+        # Mount the repo dir and run this same script inside the container
+        mkdir -p "$REPO_DIR"
+        "$RUNTIME" run --rm \
+            -v "$REPO_DIR:/repo-out:z" \
+            -v "$ROOT/scripts:/scripts:z,ro" \
+            -e EL_VER="$EL_VER" \
+            -e ARCH="$ARCH" \
+            -e REPO_DIR=/repo-out \
+            "rockylinux:${EL_VER}" \
+            bash -c "
+                dnf install -y curl createrepo_c 2>&1 | tail -5
+                bash /scripts/fetch-deps.sh
+            "
+        log "Container run complete — packages in $REPO_DIR"
+        exit 0
+    else
+        warn "No podman/docker found; attempting native cross-version download (may have dep conflicts)"
+    fi
+fi
+
+command -v dnf          &>/dev/null || die "dnf is required"
+command -v createrepo_c &>/dev/null || warn "createrepo_c not found — install: dnf install -y createrepo_c"
 
 mkdir -p "$REPO_DIR"
 log "Downloading to: $REPO_DIR"
-log "Target: EL${EL_VER} / ${ARCH}"
+log "Target:         EL${EL_VER} / ${ARCH}"
 
-# ── Helper ─────────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 download_rpm() {
     local url="$1"
     local dest="$REPO_DIR/$(basename "$url")"
@@ -33,7 +70,7 @@ download_rpm() {
         log "  Already downloaded: $(basename "$url")"
         return
     fi
-    echo -n "  Fetching: $(basename "$url") ... "
+    echo -n "  Fetching $(basename "$url") ... "
     if curl -sfL -o "$dest" "$url"; then
         echo "OK"
     else
@@ -44,18 +81,27 @@ download_rpm() {
 
 dnf_download() {
     local pkg="$1"
-    log "Downloading package + deps: $pkg"
-    dnf download --resolve --destdir="$REPO_DIR" "$pkg" 2>&1 \
-        | grep -v "^Last metadata" \
-        | grep -v "^$" \
-        || warn "dnf download failed for: $pkg"
+    log "Downloading: $pkg"
+    # DNF 4 (EL9): dnf download --resolve
+    # DNF 5 (EL10): dnf install --downloadonly --destdir
+    if dnf download --help &>/dev/null 2>&1; then
+        dnf download --resolve --destdir="$REPO_DIR" "$pkg" 2>&1 \
+            | grep -vE "^(Last metadata|$)" \
+            || warn "dnf download failed for: $pkg (skipping)"
+    else
+        dnf install --downloadonly --destdir="$REPO_DIR" -y "$pkg" 2>&1 \
+            | grep -vE "^(Last metadata|Nothing to do|Complete|Downloading|Total|Running|$)" \
+            || warn "dnf install --downloadonly failed for: $pkg (skipping)"
+    fi
 }
 
-# ── Webmin + Virtualmin GPL (direct URL downloads — no repo needed) ───────────
+cleanup() { :; }
+trap cleanup EXIT
+
+# ── Webmin + Virtualmin GPL (direct URL — noarch, same for all EL) ─────────────
 log "=== Webmin + Virtualmin GPL ==="
 
-# Latest versions as of April 2026 — bump these when upstream releases updates
-VMIN_GPL_DIRECT=(
+VMIN_GPL_PKGS=(
     "${VMIN_GPL_NOARCH}/webmin-2.630-1.noarch.rpm"
     "${VMIN_GPL_NOARCH}/usermin-2.530-1.noarch.rpm"
     "${VMIN_GPL_NOARCH}/wbm-virtual-server-8.1.0.gpl-1.noarch.rpm"
@@ -77,16 +123,25 @@ VMIN_GPL_DIRECT=(
     "${VMIN_GPL_NOARCH}/perl-Term-Spinner-Color-0.05-1.noarch.rpm"
 )
 
-for url in "${VMIN_GPL_DIRECT[@]}"; do
+for url in "${VMIN_GPL_PKGS[@]}"; do
     download_rpm "$url"
 done
 
-# ── System packages (from Rocky Linux repos) ──────────────────────────────────
+# ── System packages ────────────────────────────────────────────────────────────
 log "=== System Packages ==="
+
+# EL10 replaced ISC dhcp-server with ISC Kea
+if [[ "$EL_VER" -ge 10 ]]; then
+    DHCP_PKG="kea"
+    log "EL${EL_VER}: using kea (replaces dhcp-server)"
+else
+    DHCP_PKG="dhcp-server"
+fi
+
 SYS_PKGS=(
     bind
     bind-utils
-    dhcp-server
+    "$DHCP_PKG"
     mariadb-server
     postgresql-server
     libvirt
@@ -114,9 +169,9 @@ if command -v createrepo_c &>/dev/null; then
     createrepo_c "$REPO_DIR"
     log "Repo index created"
 else
-    warn "createrepo_c not found — run it manually on $REPO_DIR before building the RPM"
+    warn "createrepo_c not found — run it manually: createrepo_c $REPO_DIR"
 fi
 
-RPM_COUNT=$(ls "$REPO_DIR"/*.rpm 2>/dev/null | wc -l)
+RPM_COUNT=$(find "$REPO_DIR" -maxdepth 1 -name '*.rpm' | wc -l)
 log "=== Done: ${RPM_COUNT} RPMs in $REPO_DIR ==="
-log "Next step: make rpm"
+log "Next step:  make rpm EL_VER=${EL_VER}"

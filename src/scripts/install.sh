@@ -25,8 +25,13 @@ date >> "$LOG"
 
 section "Preflight Checks"
 log "Host: $(hostname -f)"
-log "OS:   $(cat /etc/rocky-release 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')"
+OS_RELEASE=$(cat /etc/rocky-release 2>/dev/null || grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
+log "OS:   $OS_RELEASE"
 log "Arch: $(uname -m)"
+
+# Detect EL version
+EL_VER=$(rpm -E '%{rhel}' 2>/dev/null || echo "9")
+log "EL:   ${EL_VER}"
 
 if [[ ! -d "$REPO_DIR" ]] || [[ -z "$(ls -A "$REPO_DIR" 2>/dev/null)" ]]; then
     warn "Offline repo not found at $REPO_DIR"
@@ -42,7 +47,9 @@ if [[ "$OFFLINE" == "true" ]]; then
     section "Configuring Local DNF Repository"
 
     if ! command -v createrepo_c &>/dev/null; then
-        die "createrepo_c not found. Install it first: rpm -ivh ${REPO_DIR}/createrepo_c-*.rpm"
+        # Bootstrap createrepo_c from the bundle itself
+        rpm -ivh "${REPO_DIR}"/createrepo_c-*.rpm 2>/dev/null \
+            || die "createrepo_c not found and could not be installed from bundle"
     fi
 
     createrepo_c --quiet "$REPO_DIR" 2>&1 | tee -a "$LOG" || true
@@ -56,7 +63,6 @@ gpgcheck=0
 priority=1
 EOF
     log "Local repo configured: $REPO_FILE"
-
     DNF_OPTS="--disablerepo='*' --enablerepo='lrn-webmin-local'"
 else
     warn "Using system DNF repos (network required)"
@@ -79,12 +85,16 @@ section "Installing Virtualmin GPL"
 
 VIRT_PKGS=(
     wbm-virtual-server
+    wbt-virtual-server-theme
     wbm-virtualmin-htpasswd
     wbm-virtualmin-awstats
     wbm-virtualmin-dav
-    wbm-virtualmin-mailman
-    wbm-virtualmin-spamassassin
+    wbm-virtualmin-git
+    wbm-virtualmin-init
+    wbm-virtualmin-sqlite
+    wbm-jailkit
     virtualmin-config
+    usermin
 )
 
 for pkg in "${VIRT_PKGS[@]}"; do
@@ -101,21 +111,32 @@ done
 # ── Install supporting packages ────────────────────────────────────────────────
 section "Installing Supporting Packages"
 
+# EL10 replaced ISC dhcp-server with ISC Kea
+if [[ "$EL_VER" -ge 10 ]]; then
+    DHCP_PKG="kea"
+    log "EL${EL_VER}: using Kea DHCP server (replaces dhcp-server)"
+else
+    DHCP_PKG="dhcp-server"
+fi
+
 SUPPORT_PKGS=(
     bind
     bind-utils
-    dhcp-server
+    "$DHCP_PKG"
     mariadb-server
     postgresql-server
     libvirt
+    libvirt-daemon-kvm
     qemu-kvm
     virt-install
-    virt-viewer
     perl-libwww-perl
     perl-LWP-Protocol-https
     perl-JSON
     perl-URI
     perl-HTTP-Message
+    perl-Net-SSLeay
+    perl-IO-Socket-SSL
+    firewalld
 )
 
 for pkg in "${SUPPORT_PKGS[@]}"; do
@@ -124,6 +145,12 @@ for pkg in "${SUPPORT_PKGS[@]}"; do
         && log "Installed: $pkg" \
         || warn "Package not available (skipping): $pkg"
 done
+
+# EL10 Kea: enable dhcp4 service instead of dhcpd
+if [[ "$EL_VER" -ge 10 ]]; then
+    log "Note: DHCP managed by Kea — use 'kea-dhcp4' service and /etc/kea/kea-dhcp4.conf"
+    log "      Webmin DHCP module (wbm-dhcpd) targets ISC dhcpd; manage Kea via LRN Service Panels"
+fi
 
 # ── Install LRN custom Webmin modules ─────────────────────────────────────────
 section "Installing LRN Service Panels Module"
@@ -190,9 +217,6 @@ cat <<EOF
   Virtualmin: https://$(hostname -f):10000/virtual-server/
   Log:        $LOG
 
-  LRN Service Panels:
+  LRN Service Panels (FreeIPA, Ansible, XMPP, Cockpit):
     Webmin → Others → LRN Service Panels
-
-  Configure iframe service URLs:
-    Webmin → Others → LRN Service Panels → Add Service
 EOF
