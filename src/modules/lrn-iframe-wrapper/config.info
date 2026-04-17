@@ -1,0 +1,3 @@
+enable_proxy=Enable reverse proxy mode for framed services
+enable_proxy_type=yesno
+enable_proxy_help=When enabled, services marked as "proxy mode" will have their requests routed through Webmin. This strips X-Frame-Options headers so services that block iframe embedding can still be displayed. Requires perl-LWP-UserAgent and perl-LWP-Protocol-https.

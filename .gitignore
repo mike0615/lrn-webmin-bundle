@@ -1,0 +1,9 @@
+BUILD/
+RPMS/
+SRPMS/
+SOURCES/*.tar.gz
+SOURCES/repo/
+*.rpm
+*.log
+*.tmp
+.DS_Store

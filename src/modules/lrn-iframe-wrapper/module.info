@@ -1,0 +1,7 @@
+name=LRN Service Panels
+desc=Integrated iframe panels for services without native Webmin modules (FreeIPA, Ansible, XMPP, Cockpit, and more)
+version=1.0
+os_support=*-linux
+category=Others
+depends=
+longdesc=Provides configurable integrated web interface panels for services that lack native Webmin modules. Includes pre-defined panels for FreeIPA, Ansible Semaphore, ejabberd XMPP, and Cockpit KVM. Supports optional reverse-proxy mode to bypass X-Frame-Options restrictions.

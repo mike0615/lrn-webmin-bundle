@@ -1,0 +1,30 @@
+index_title=LRN Service Panels
+index_noservices=No service panels configured. Click "Add Service Panel" to get started.
+index_add=Add Service Panel
+index_return=Service Panels
+index_open=Open
+index_edit=Edit
+index_delete=Delete
+index_confirm=Delete this service panel?
+
+view_notfound=Service not found.
+view_open_new=Open in new tab
+
+edit_title=Edit Service Panel
+add_title=Add Service Panel
+edit_name=Service Name
+edit_url=Service URL
+edit_desc=Description
+edit_category=Category
+edit_icon=Icon Filename
+edit_proxy=Proxy Mode
+edit_proxy_label=Enable reverse proxy (bypass X-Frame-Options)
+edit_save=Save Changes
+add_save=Add Panel
+
+save_err=Error saving service
+save_noname=Service name is required
+save_nourl=Service URL is required
+save_badurl=Invalid URL (must start with http:// or https://)
+
+delete_noname=No service name specified
