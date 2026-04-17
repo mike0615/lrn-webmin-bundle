@@ -10,9 +10,8 @@ URL:            https://github.com/mike0615/lrn-webmin-bundle
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      x86_64
 
-Requires:       perl
-Requires:       curl
-Requires:       firewalld
+# No RPM-level Requires — all dependencies are bundled inside the repo/
+# directory and installed by install.sh from the local offline repo.
 
 %description
 Self-contained air-gapped installation bundle for Webmin and Virtualmin on

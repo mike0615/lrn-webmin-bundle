@@ -6,7 +6,7 @@ set -euo pipefail
 BUNDLE_DIR="/opt/lrn-webmin-bundle"
 REPO_DIR="${BUNDLE_DIR}/repo"
 MODULE_DIR="${BUNDLE_DIR}/modules"
-WEBMIN_MODULE_DIR="/usr/share/webmin"
+WEBMIN_MODULE_DIR="/usr/libexec/webmin"
 WEBMIN_ETC="/etc/webmin"
 REPO_FILE="/etc/yum.repos.d/lrn-webmin-local.repo"
 LOG="/var/log/lrn-webmin-bundle-install.log"
@@ -46,13 +46,11 @@ fi
 if [[ "$OFFLINE" == "true" ]]; then
     section "Configuring Local DNF Repository"
 
-    if ! command -v createrepo_c &>/dev/null; then
-        # Bootstrap createrepo_c from the bundle itself
-        rpm -ivh "${REPO_DIR}"/createrepo_c-*.rpm 2>/dev/null \
-            || die "createrepo_c not found and could not be installed from bundle"
+    # repodata is pre-built during fetch-deps — no need to regenerate
+    if [[ ! -f "$REPO_DIR/repodata/repomd.xml" ]]; then
+        die "Repo index missing at $REPO_DIR/repodata/repomd.xml — bundle may be corrupt"
     fi
-
-    createrepo_c --quiet "$REPO_DIR" 2>&1 | tee -a "$LOG" || true
+    log "Using pre-built repo index: $(ls "$REPO_DIR"/repodata/ | wc -l) index files"
 
     cat > "$REPO_FILE" <<EOF
 [lrn-webmin-local]
@@ -63,7 +61,7 @@ gpgcheck=0
 priority=1
 EOF
     log "Local repo configured: $REPO_FILE"
-    DNF_OPTS="--disablerepo='*' --enablerepo='lrn-webmin-local'"
+    DNF_OPTS="--disablerepo=* --enablerepo=lrn-webmin-local"
 else
     warn "Using system DNF repos (network required)"
     DNF_OPTS=""
@@ -76,8 +74,10 @@ if rpm -q webmin &>/dev/null; then
     log "Webmin already installed: $(rpm -q webmin)"
 else
     # shellcheck disable=SC2086
-    dnf install -y $DNF_OPTS webmin 2>&1 | tee -a "$LOG" || die "Failed to install webmin"
-    log "Webmin installed"
+    dnf install -y $DNF_OPTS webmin 2>&1 | tee -a "$LOG" || true
+    # Verify install succeeded even if dnf returned non-zero (e.g. deps already installed)
+    rpm -q webmin &>/dev/null || die "Failed to install webmin"
+    log "Webmin installed: $(rpm -q webmin)"
 fi
 
 # ── Install Virtualmin GPL ─────────────────────────────────────────────────────
@@ -141,7 +141,8 @@ SUPPORT_PKGS=(
 
 for pkg in "${SUPPORT_PKGS[@]}"; do
     # shellcheck disable=SC2086
-    dnf install -y $DNF_OPTS "$pkg" 2>&1 | tee -a "$LOG" \
+    dnf install -y $DNF_OPTS "$pkg" 2>&1 | tee -a "$LOG" || true
+    rpm -q "$pkg" &>/dev/null \
         && log "Installed: $pkg" \
         || warn "Package not available (skipping): $pkg"
 done

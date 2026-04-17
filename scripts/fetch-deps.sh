@@ -27,15 +27,19 @@ die()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
 command -v curl &>/dev/null || die "curl is required"
 
-# ── Cross-version: run inside a Rocky Linux container if EL_VER != host ───────
+# ── Always run inside a Rocky Linux container for clean dep resolution ─────────
+# Running in a minimal container ensures `dnf download --resolve` picks up ALL
+# transitive dependencies (perl sub-packages, etc.) that are pre-installed on
+# a typical build host and would otherwise be silently skipped.
 HOST_EL_VER="$(rpm -E '%{rhel}' 2>/dev/null || echo '9')"
 
-if [[ "$EL_VER" != "$HOST_EL_VER" ]]; then
+# Skip container re-entry if we are already inside one (REPO_DIR overridden)
+IN_CONTAINER="${IN_CONTAINER:-0}"
+
+if [[ "$IN_CONTAINER" != "1" ]]; then
     if command -v podman &>/dev/null || command -v docker &>/dev/null; then
         RUNTIME=$(command -v podman || command -v docker)
-        log "Cross-version build: re-running inside Rocky Linux ${EL_VER} container via $(basename "$RUNTIME")"
-        mkdir -p "$REPO_DIR"
-        # Mount the repo dir and run this same script inside the container
+        log "Running inside Rocky Linux ${EL_VER} container for clean dep resolution via $(basename "$RUNTIME")"
         mkdir -p "$REPO_DIR"
         "$RUNTIME" run --rm \
             -v "$REPO_DIR:/repo-out:z" \
@@ -43,15 +47,16 @@ if [[ "$EL_VER" != "$HOST_EL_VER" ]]; then
             -e EL_VER="$EL_VER" \
             -e ARCH="$ARCH" \
             -e REPO_DIR=/repo-out \
+            -e IN_CONTAINER=1 \
             "rockylinux:${EL_VER}" \
             bash -c "
-                dnf install -y curl createrepo_c 2>&1 | tail -5
+                dnf install -y createrepo_c 2>&1 | tail -5
                 bash /scripts/fetch-deps.sh
             "
         log "Container run complete — packages in $REPO_DIR"
         exit 0
     else
-        warn "No podman/docker found; attempting native cross-version download (may have dep conflicts)"
+        warn "No podman/docker found; running natively (transitive deps may be incomplete)"
     fi
 fi
 
@@ -139,15 +144,34 @@ else
 fi
 
 SYS_PKGS=(
+    # Webmin hard deps (often pre-installed, must be explicit for air-gap)
+    perl
+    perl-interpreter
+    perl-libs
+    perl-core
+    perl-Digest-SHA
+    perl-Digest-MD5
+    perl-Data-Dumper
+    perl-Time-Local
+    perl-File-Path
+    perl-File-Basename
+    perl-lib
+    perl-open
+    unzip
+    # DNS
     bind
     bind-utils
+    # DHCP (EL9: dhcp-server, EL10: kea)
     "$DHCP_PKG"
+    # Databases
     mariadb-server
     postgresql-server
+    # Virtualization
     libvirt
     libvirt-daemon-kvm
     qemu-kvm
     virt-install
+    # Perl LWP stack for proxy module
     perl-libwww-perl
     perl-LWP-Protocol-https
     perl-JSON
@@ -155,8 +179,13 @@ SYS_PKGS=(
     perl-HTTP-Message
     perl-Net-SSLeay
     perl-IO-Socket-SSL
+    # System tools
     createrepo_c
     firewalld
+    # virtualmin-config dependency
+    perl-Log-Log4perl
+    # mariadb-server SELinux dependency (needed when selinux-policy-targeted is installed)
+    mysql-selinux
 )
 
 for pkg in "${SYS_PKGS[@]}"; do
